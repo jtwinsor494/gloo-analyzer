@@ -1,0 +1,19 @@
+{
+  "name": "gloo-analyzer",
+  "version": "1.0.0",
+  "description": "AI-native language framework analyzer for Gloo communications",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "gloo-analyze": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "cli": "node src/cli.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "express": "^4.21.0"
+  }
+}
