@@ -198,6 +198,50 @@ const HTML = `<!DOCTYPE html>
   header .badges { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
   .badge { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 600; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
+  /* --- Page nav --- */
+  .page-nav { display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .page-nav-btn {
+    padding: 0.5rem 1.5rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; transition: all 0.2s;
+  }
+  .page-nav-btn:hover { color: var(--text); border-color: var(--accent); }
+  .page-nav-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .page-view { display: none; }
+  .page-view.active { display: block; }
+
+  /* --- About page --- */
+  .about-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; margin-bottom: 1.5rem; }
+  .about-section h2 { font-size: 1.3rem; font-weight: 700; color: var(--accent-hover); margin-bottom: 1rem; }
+  .about-section h3 { font-size: 1.05rem; font-weight: 600; color: var(--text); margin: 1.5rem 0 0.5rem; }
+  .about-section p { color: var(--text); font-size: 0.92rem; line-height: 1.75; margin-bottom: 0.75rem; }
+  .about-section .muted { color: var(--muted); }
+  .about-section a { color: var(--accent-hover); text-decoration: none; }
+  .about-section a:hover { text-decoration: underline; }
+  .about-section ul { margin: 0.5rem 0 1rem 1.5rem; }
+  .about-section li { color: var(--text); font-size: 0.92rem; line-height: 1.75; margin-bottom: 0.25rem; }
+  .about-section li strong { color: #fff; }
+  .timeline { position: relative; padding-left: 2rem; margin: 1.5rem 0; }
+  .timeline::before { content: ''; position: absolute; left: 7px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
+  .timeline-item { position: relative; margin-bottom: 1.25rem; }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -2rem; top: 8px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--bg);
+  }
+  .timeline-item .step-label { font-size: 0.7rem; font-weight: 700; color: var(--accent-hover); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.15rem; }
+  .timeline-item .step-text { font-size: 0.9rem; color: var(--text); line-height: 1.6; }
+  .timeline-item .step-text .muted { color: var(--muted); }
+  .callout {
+    background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 10px; padding: 1.25rem 1.5rem; margin: 1.5rem 0;
+  }
+  .callout .callout-title { font-weight: 700; font-size: 0.9rem; color: var(--accent-hover); margin-bottom: 0.5rem; }
+  .callout p { font-size: 0.88rem; margin-bottom: 0.5rem; }
+  .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+  .tech-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; }
+  .tech-card .tech-name { font-weight: 600; font-size: 0.85rem; color: var(--text); }
+  .tech-card .tech-desc { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+
   /* --- Tabs --- */
   .input-tabs { display: flex; gap: 0; margin-bottom: 0; }
   .tab-btn {
@@ -334,6 +378,15 @@ const HTML = `<!DOCTYPE html>
     </div>
   </header>
 
+  <!-- Page navigation -->
+  <div class="page-nav">
+    <div class="page-nav-btn active" onclick="switchPage('analyzer')">Analyzer</div>
+    <div class="page-nav-btn" onclick="switchPage('about')">About</div>
+  </div>
+
+  <!-- ============ ANALYZER PAGE ============ -->
+  <div class="page-view active" id="page-analyzer">
+
   <!-- Tab buttons -->
   <div class="input-tabs">
     <div class="tab-btn active" onclick="switchTab('paste')">Paste Text</div>
@@ -406,9 +459,117 @@ const HTML = `<!DOCTYPE html>
       <div class="dim"><span class="name">D7</span> <span class="desc">Organizational Language</span></div>
     </div>
   </div>
+
+  </div><!-- /page-analyzer -->
+
+  <!-- ============ ABOUT PAGE ============ -->
+  <div class="page-view" id="page-about">
+
+    <div class="about-section">
+      <h2>How We Built the Gloo Analyzer</h2>
+      <p>This tool was built in a single working session &mdash; a conversation between a human and an AI. No design sprints. No Jira tickets. No engineering team. Just a clear idea and a collaborative process that turned it into a working, deployed product in hours.</p>
+      <p class="muted">Here's the full story of how it happened.</p>
+
+      <h3>The Starting Point: A Framework on Paper</h3>
+      <p>It began with a proprietary language framework &mdash; a structured approach to analyzing how companies talk about themselves. The framework was developed through analysis of 10+ companies across the AI-native and SaaS-native spectrum, scoring communications on seven dimensions and four diagnostic tells.</p>
+      <p>The framework existed as a detailed written document: scoring rubrics for each dimension, translation guides, worked examples, and a clear output format. The question was: <em>Can we turn this into a tool anyone can use?</em></p>
+
+      <h3>The Build: A Real-Time Conversation</h3>
+      <p>The entire application was built through a human-AI conversation using <strong>Claude Code</strong> (Anthropic's agentic coding tool). Here's how the session unfolded:</p>
+
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="step-label">Step 1 &mdash; Framework as System Prompt</div>
+          <div class="step-text">The written framework was converted into a structured system prompt for the Anthropic API. Every API call sends this framework as context, so Claude analyzes text against the exact same rubric every time. <span class="muted">The framework lives in a file called framework-prompt.md &mdash; the brain of the whole tool.</span></div>
+        </div>
+        <div class="timeline-item">
+          <div class="step-label">Step 2 &mdash; Core Engine</div>
+          <div class="step-text">Claude Code wrote the Node.js application from scratch: an analyzer module that streams responses from the Anthropic API, a command-line interface for local testing, and an Express web server with a full UI. <span class="muted">First working version: ~200 lines of code across three files.</span></div>
+        </div>
+        <div class="timeline-item">
+          <div class="step-label">Step 3 &mdash; First Test</div>
+          <div class="step-text">We ran a sample Gloo press release through the CLI. The framework scored it 12 out of 35 (firmly SaaS-Native), flagged all four diagnostic tells as present, and provided line-by-line rewrites. <span class="muted">It worked on the first try.</span></div>
+        </div>
+        <div class="timeline-item">
+          <div class="step-label">Step 4 &mdash; Deployment</div>
+          <div class="step-text">The conversation included setting up the entire deployment pipeline: creating a GitHub repository from the terminal, authenticating with GitHub (a first-time experience), and deploying to Railway with environment variables. <span class="muted">From local code to live URL in minutes.</span></div>
+        </div>
+        <div class="timeline-item">
+          <div class="step-label">Step 5 &mdash; File Upload</div>
+          <div class="step-text">When the question came up &mdash; "Can I upload PowerPoint and Google Slides?" &mdash; the answer was built and deployed in the same session. Server-side parsing for PPTX, PDF, DOCX, and plain text files, with drag-and-drop in the UI. <span class="muted">New feature requested and shipped in one conversation turn.</span></div>
+        </div>
+        <div class="timeline-item">
+          <div class="step-label">Step 6 &mdash; This Page</div>
+          <div class="step-text">You're reading the result of yet another request in the same session. <span class="muted">The About page was added, committed, and deployed in the same ongoing conversation.</span></div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">What makes this interesting</div>
+        <p>This isn't a demo or a prototype. It's a working production tool, built entirely through human-AI collaboration. The human brought the domain expertise (the language framework, the strategic insight), and the AI handled the engineering (architecture, code, deployment, debugging).</p>
+        <p>The entire process &mdash; from "I have a framework document" to "it's live on the internet and handles file uploads" &mdash; happened in a single conversation.</p>
+      </div>
+
+      <h3>The Tech Stack</h3>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <div class="tech-name">Claude Sonnet</div>
+          <div class="tech-desc">Anthropic's API powers every analysis using the full framework as a system prompt</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-name">Claude Code</div>
+          <div class="tech-desc">Anthropic's agentic coding tool wrote the application code, debugged issues, and managed deployment</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-name">Node.js + Express</div>
+          <div class="tech-desc">Server-side runtime with streaming Server-Sent Events for real-time output</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-name">Railway</div>
+          <div class="tech-desc">Cloud hosting with auto-deploy from GitHub on every push</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-name">JSZip + fast-xml-parser</div>
+          <div class="tech-desc">Server-side extraction of text from PPTX and DOCX files (Office XML formats)</div>
+        </div>
+        <div class="tech-card">
+          <div class="tech-name">unpdf</div>
+          <div class="tech-desc">PDF text extraction with bundled PDF.js &mdash; zero external dependencies</div>
+        </div>
+      </div>
+
+      <h3>The Framework Itself</h3>
+      <p>The language framework at the heart of this tool scores communications across seven dimensions, each rated 1&ndash;5:</p>
+      <ul>
+        <li><strong>D1: Self-Description</strong> &mdash; How does the company describe itself? (Category label vs. category-transcendent)</li>
+        <li><strong>D2: Unit of Value</strong> &mdash; What is the reader told they're getting? (Seats and licenses vs. lives impacted)</li>
+        <li><strong>D3: Competitive Frame</strong> &mdash; Who or what is positioned as the competition? (Named vendors vs. civilizational challenges)</li>
+        <li><strong>D4: CEO/Founder Voice</strong> &mdash; What register does leadership use? (Corporate boilerplate vs. worldview expression)</li>
+        <li><strong>D5: Temporal Orientation</strong> &mdash; How does the text talk about time? (Fiscal quarters vs. generational shifts)</li>
+        <li><strong>D6: Financial Narrative</strong> &mdash; How are results framed? (Revenue up X% vs. resource deployment against mission)</li>
+        <li><strong>D7: Organizational Language</strong> &mdash; How is the team described? (Headcount and departments vs. callings and stewardship)</li>
+      </ul>
+      <p>It also checks for four diagnostic tells: SaaS boilerplate phrases, passive voice ratio, the "platform for" construction, and jargon density. The composite score (7&ndash;35) places any text on a spectrum from SaaS-Native to Mission-Native.</p>
+
+      <h3>Open Source</h3>
+      <p>The complete source code is available at <a href="https://github.com/jtwinsor494/gloo-analyzer" target="_blank">github.com/jtwinsor494/gloo-analyzer</a>.</p>
+      <p class="muted" style="margin-top: 2rem; font-size: 0.8rem;">Built with Claude Code by Anthropic. The framework was developed by the Gloo team.</p>
+    </div>
+
+  </div><!-- /page-about -->
+
 </div>
 
 <script>
+// --- Page switching (Analyzer / About) ---
+function switchPage(page) {
+  document.querySelectorAll(".page-nav-btn").forEach((b, i) => {
+    b.classList.toggle("active", (i === 0 && page === "analyzer") || (i === 1 && page === "about"));
+  });
+  document.getElementById("page-analyzer").classList.toggle("active", page === "analyzer");
+  document.getElementById("page-about").classList.toggle("active", page === "about");
+}
+
 // --- Tab switching ---
 let activeTab = "paste";
 let uploadedText = "";
