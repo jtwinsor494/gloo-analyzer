@@ -1,5 +1,7 @@
 import express from "express";
+import multer from "multer";
 import { analyzeStream } from "./analyzer.js";
+import { extractText } from "./fileParser.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -7,11 +9,35 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = parseInt(process.env.RATE_LIMIT || "10", 10); // requests per IP per minute
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "500kb" }));
 app.use(express.urlencoded({ extended: true, limit: "500kb" }));
+
+// Multer for file uploads (memory storage — files stay in RAM)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter(_req, file, cb) {
+    const allowed = [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",   // .docx
+      "application/pdf",
+      "text/plain",
+      "text/markdown",
+    ];
+    // Also allow by extension for browsers that send generic MIME
+    const ext = (file.originalname || "").split(".").pop().toLowerCase();
+    const allowedExt = ["pptx", "pdf", "docx", "txt", "md"];
+    if (allowed.includes(file.mimetype) || allowedExt.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Upload PPTX, PDF, DOCX, TXT, or MD files.`));
+    }
+  },
+});
 
 // --- Simple in-memory rate limiter ---
 
@@ -51,6 +77,29 @@ app.get("/", (_req, res) => {
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", apiKey: !!process.env.ANTHROPIC_API_KEY });
+});
+
+// --- File upload + text extraction endpoint ---
+
+app.post("/api/extract", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const { text, format } = await extractText(req.file.buffer, {
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname,
+    });
+    res.json({ text, format, filename: req.file.originalname, chars: text.length });
+  } catch (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "File too large. Maximum size is 10 MB." });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(400).json({ error: err.message || "Failed to extract text from file" });
+  }
 });
 
 // --- Streaming analysis endpoint ---
@@ -98,6 +147,15 @@ app.post("/api/analyze", rateLimit, async (req, res) => {
   }
 });
 
+// Multer error handler
+app.use((err, _req, res, _next) => {
+  if (err instanceof multer.MulterError || err.message?.includes("Unsupported file type")) {
+    return res.status(400).json({ error: err.message });
+  }
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
 app.listen(PORT, () => {
   console.log(`Gloo Analyzer running at http://localhost:${PORT}`);
 });
@@ -140,7 +198,18 @@ const HTML = `<!DOCTYPE html>
   header .badges { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
   .badge { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 600; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
-  .input-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  /* --- Tabs --- */
+  .input-tabs { display: flex; gap: 0; margin-bottom: 0; }
+  .tab-btn {
+    padding: 0.6rem 1.25rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    background: var(--surface2); color: var(--muted); border: 1px solid var(--border);
+    border-bottom: none; border-radius: 8px 8px 0 0; transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { background: var(--surface); color: var(--text); border-color: var(--border); position: relative; }
+  .tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 1px; background: var(--surface); }
+
+  .input-section { background: var(--surface); border: 1px solid var(--border); border-radius: 0 12px 12px 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
   .input-label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
   textarea {
     width: 100%; min-height: 220px; background: var(--bg); border: 1px solid var(--border);
@@ -159,6 +228,48 @@ const HTML = `<!DOCTYPE html>
   }
   button:hover { background: var(--accent-hover); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* --- File upload area --- */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 2.5rem 1.5rem;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+    background: var(--bg); position: relative;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent); background: rgba(99,102,241,0.05);
+  }
+  .upload-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+  .upload-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+  .upload-title { font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem; }
+  .upload-subtitle { color: var(--muted); font-size: 0.85rem; }
+  .upload-formats { color: var(--muted); font-size: 0.75rem; margin-top: 0.75rem; }
+  .upload-formats span { background: var(--surface2); padding: 0.15rem 0.5rem; border-radius: 4px; margin: 0 0.2rem; font-weight: 600; }
+
+  .file-preview {
+    display: none; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem; margin-top: 1rem;
+  }
+  .file-preview.visible { display: block; }
+  .file-info { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+  .file-icon { font-size: 1.5rem; }
+  .file-name { font-weight: 600; font-size: 0.9rem; }
+  .file-meta { color: var(--muted); font-size: 0.75rem; }
+  .file-text-preview {
+    max-height: 150px; overflow-y: auto; font-size: 0.8rem; color: var(--muted);
+    background: var(--surface2); padding: 0.75rem; border-radius: 6px; white-space: pre-wrap;
+    line-height: 1.5;
+  }
+  .file-remove {
+    background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px;
+    padding: 0.3rem 0.75rem; font-size: 0.75rem; cursor: pointer; margin-left: auto;
+  }
+  .file-remove:hover { color: var(--red); border-color: var(--red); background: rgba(239,68,68,0.1); }
+  .extracting { color: var(--accent-hover); font-size: 0.85rem; padding: 1rem 0; }
 
   .output-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: none; }
   .output-section.visible { display: block; }
@@ -203,6 +314,11 @@ const HTML = `<!DOCTYPE html>
   .dim { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.8rem; }
   .dim .name { font-weight: 600; color: var(--text); }
   .dim .desc { color: var(--muted); }
+
+  @media (max-width: 600px) {
+    .container { padding: 1rem; }
+    .tab-btn { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
+  }
 </style>
 </head>
 <body>
@@ -218,10 +334,46 @@ const HTML = `<!DOCTYPE html>
     </div>
   </header>
 
+  <!-- Tab buttons -->
+  <div class="input-tabs">
+    <div class="tab-btn active" onclick="switchTab('paste')">Paste Text</div>
+    <div class="tab-btn" onclick="switchTab('upload')">Upload File</div>
+  </div>
+
   <div class="input-section">
-    <label class="input-label" for="input">Paste communications text</label>
-    <textarea id="input" placeholder="Paste a press release, earnings script, marketing copy, investor materials, or internal memo here..."></textarea>
-    <div class="char-count"><span id="char-count">0</span> characters</div>
+    <!-- Tab: Paste text -->
+    <div class="tab-content active" id="tab-paste">
+      <label class="input-label" for="input">Paste communications text</label>
+      <textarea id="input" placeholder="Paste a press release, earnings script, marketing copy, investor materials, or internal memo here..."></textarea>
+      <div class="char-count"><span id="char-count">0</span> characters</div>
+    </div>
+
+    <!-- Tab: Upload file -->
+    <div class="tab-content" id="tab-upload">
+      <label class="input-label">Upload a document</label>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".pptx,.pdf,.docx,.txt,.md" />
+        <div class="upload-icon">&#128196;</div>
+        <div class="upload-title">Drop a file here or click to browse</div>
+        <div class="upload-subtitle">Google Slides? Export as PPTX first (File &rarr; Download &rarr; .pptx)</div>
+        <div class="upload-formats">
+          <span>PPTX</span> <span>PDF</span> <span>DOCX</span> <span>TXT</span> <span>MD</span>
+        </div>
+      </div>
+      <div class="extracting" id="extracting" style="display:none;">Extracting text from file...</div>
+      <div class="file-preview" id="file-preview">
+        <div class="file-info">
+          <span class="file-icon" id="file-icon">&#128196;</span>
+          <div>
+            <div class="file-name" id="file-name"></div>
+            <div class="file-meta" id="file-meta"></div>
+          </div>
+          <button class="file-remove" onclick="removeFile()">Remove</button>
+        </div>
+        <div class="file-text-preview" id="file-text-preview"></div>
+      </div>
+    </div>
+
     <div class="controls">
       <button id="analyze-btn" onclick="runAnalysis()">Analyze</button>
       <label class="checkbox-label">
@@ -257,53 +409,121 @@ const HTML = `<!DOCTYPE html>
 </div>
 
 <script>
+// --- Tab switching ---
+let activeTab = "paste";
+let uploadedText = "";
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab-btn").forEach((b, i) => {
+    b.classList.toggle("active", (i === 0 && tab === "paste") || (i === 1 && tab === "upload"));
+  });
+  document.getElementById("tab-paste").classList.toggle("active", tab === "paste");
+  document.getElementById("tab-upload").classList.toggle("active", tab === "upload");
+}
+
+// --- Paste text ---
 document.getElementById("input").addEventListener("input", e => {
   document.getElementById("char-count").textContent = e.target.value.length;
 });
 
+// --- File upload ---
+const fileInput = document.getElementById("file-input");
+const uploadZone = document.getElementById("upload-zone");
+
+// Drag & drop styling
+uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+uploadZone.addEventListener("drop", e => {
+  e.preventDefault();
+  uploadZone.classList.remove("dragover");
+  if (e.dataTransfer.files.length > 0) {
+    fileInput.files = e.dataTransfer.files;
+    handleFile(e.dataTransfer.files[0]);
+  }
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+});
+
+const formatIcons = { pptx: "&#128202;", pdf: "&#128196;", docx: "&#128195;", txt: "&#128221;", md: "&#128221;" };
+
+async function handleFile(file) {
+  const extracting = document.getElementById("extracting");
+  const preview = document.getElementById("file-preview");
+  extracting.style.display = "block";
+  preview.classList.remove("visible");
+  uploadedText = "";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch("/api/extract", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Extraction failed");
+
+    uploadedText = data.text;
+    document.getElementById("file-icon").innerHTML = formatIcons[data.format] || "&#128196;";
+    document.getElementById("file-name").textContent = data.filename;
+    document.getElementById("file-meta").textContent = data.format.toUpperCase() + " \\u2022 " + data.chars.toLocaleString() + " characters extracted";
+    document.getElementById("file-text-preview").textContent = data.text.slice(0, 500) + (data.text.length > 500 ? "\\n\\n... (truncated preview)" : "");
+    preview.classList.add("visible");
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
+    extracting.style.display = "none";
+  }
+}
+
+function removeFile() {
+  uploadedText = "";
+  fileInput.value = "";
+  document.getElementById("file-preview").classList.remove("visible");
+}
+
+// --- Copy ---
 function copyOutput() {
-  const text = rawOutput;
-  navigator.clipboard.writeText(text).then(() => {
+  navigator.clipboard.writeText(rawOutput).then(() => {
     const btn = document.getElementById("copy-btn");
     btn.textContent = "Copied!";
     setTimeout(() => btn.textContent = "Copy", 1500);
   });
 }
 
-// Minimal markdown renderer (no external deps)
+// --- Minimal markdown renderer ---
 function renderMd(src) {
   let html = src
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    // headings
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // hr
     .replace(/^---$/gm, "<hr>")
-    // bold + italic
     .replace(/\\*\\*\\*(.+?)\\*\\*\\*/g, "<strong><em>$1</em></strong>")
     .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
     .replace(/\\*(.+?)\\*/g, "<em>$1</em>")
-    // inline code
-    .replace(/\`([^\`]+)\`/g, "<code>$1</code>")
-    // blockquote
+    .replace(/\\\`([^\\\`]+)\\\`/g, "<code>$1</code>")
     .replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>")
-    // unordered list items
     .replace(/^- (.+)$/gm, "<li>$1</li>")
-    // paragraphs: double newlines
     .replace(/\\n\\n/g, "</p><p>")
-    // single newlines in list context keep as-is, others become <br>
     .replace(/\\n/g, "<br>");
-  // wrap consecutive <li> in <ul>
   html = html.replace(/(<li>.*?<\\/li>(?:<br>)?)+/g, (m) => "<ul>" + m.replace(/<br>/g, "") + "</ul>");
   return "<p>" + html + "</p>";
 }
 
 let rawOutput = "";
 
+// --- Run analysis ---
 async function runAnalysis() {
-  const text = document.getElementById("input").value.trim();
-  if (!text) return;
+  // Get text from active tab
+  let text;
+  if (activeTab === "upload") {
+    text = uploadedText;
+    if (!text) { alert("Please upload a file first."); return; }
+  } else {
+    text = document.getElementById("input").value.trim();
+    if (!text) { alert("Please enter some text to analyze."); return; }
+  }
 
   const btn = document.getElementById("analyze-btn");
   const section = document.getElementById("output-section");
@@ -320,7 +540,6 @@ async function runAnalysis() {
   status.className = "status streaming";
   rawOutput = "";
 
-  // Scroll output into view
   section.scrollIntoView({ behavior: "smooth", block: "start" });
 
   try {
@@ -368,7 +587,6 @@ async function runAnalysis() {
           }
           if (data.text) {
             rawOutput += data.text;
-            // During streaming, show plain text with cursor for speed
             output.textContent = rawOutput;
             const cursorEl = document.createElement("span");
             cursorEl.className = "cursor";
@@ -379,7 +597,6 @@ async function runAnalysis() {
       }
     }
 
-    // Stream ended
     status.textContent = "Complete";
     status.className = "status done";
     btn.disabled = false;
